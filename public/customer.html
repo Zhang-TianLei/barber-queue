@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>✂️ 顾客取号</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, sans-serif; }
+    body { background: #f7f7fc; min-height: 100vh; display: flex; justify-content: center; align-items: flex-start; padding: 20px; }
+    .card { background: #fff; border-radius: 28px; padding: 32px 28px; width: 100%; max-width: 460px; box-shadow: 0 12px 30px rgba(0,0,0,0.08); }
+    h1 { font-size: 1.5rem; color: #1e1e2f; margin-bottom: 24px; display: flex; align-items: center; gap: 8px; }
+    .input-row { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+    input, select { flex: 1; min-width: 160px; padding: 14px 18px; border: 1.5px solid #ddddee; border-radius: 60px; font-size: 1rem; outline: none; background: #fafaff; transition: 0.2s; }
+    input:focus, select:focus { border-color: #6c5ce7; box-shadow: 0 0 0 4px rgba(108,92,231,0.12); background: #fff; }
+    button { background: #6c5ce7; color: #fff; border: none; padding: 14px 22px; border-radius: 60px; font-weight: 600; font-size: 1rem; cursor: pointer; transition: 0.2s; white-space: nowrap; box-shadow: 0 4px 12px rgba(108,92,231,0.3); }
+    button:hover { background: #5b4cd4; transform: translateY(-1px); }
+    button:active { transform: translateY(1px); }
+    button.secondary { background: #fff; color: #6c5ce7; border: 1.5px solid #6c5ce7; box-shadow: none; }
+    button.secondary:hover { background: #f4f2ff; }
+    button:disabled { background: #ccc; box-shadow: none; cursor: not-allowed; transform: none; }
+    .stats { background: #f4f2ff; border-radius: 20px; padding: 20px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+    .stats .label { color: #5e5e7a; font-size: 0.9rem; margin-bottom: 4px; }
+    .stats .big-num { font-size: 2.4rem; font-weight: 800; color: #6c5ce7; line-height: 1; }
+    .stats .called { font-size: 1.8rem; font-weight: 800; color: #ff7675; text-align: right; }
+    .my-ticket { background: #faf9ff; border: 1px dashed #c9c2ff; border-radius: 20px; padding: 20px; text-align: center; margin-bottom: 16px; display: none; }
+    .my-ticket .hint { font-size: 0.85rem; color: #7a7a9a; margin-bottom: 6px; }
+    .my-ticket .code { font-size: 2.4rem; font-weight: 800; letter-spacing: 2px; color: #352e6b; }
+    .my-ticket .phone { color: #6e6e8f; font-size: 0.9rem; margin-top: 6px; }
+    .my-ticket .actions { margin-top: 12px; }
+    .waiting-codes { margin-top: 12px; font-size: 0.85rem; color: #6e6e8f; line-height: 1.6; }
+    .toast { text-align: center; font-size: 0.85rem; color: #a0a0b8; margin-top: 16px; }
+    .divider { height: 1px; background: #eeeef8; margin: 20px 0; }
+    .barber-tag { display: inline-block; background: #e9e5ff; color: #5b4cd4; padding: 2px 10px; border-radius: 20px; font-size: 0.75rem; margin-left: 6px; }
+  </style>
+</head>
+<body>
+<div class="card">
+  <h1>✂️ 取号排队</h1>
+
+  <div class="input-row">
+    <input type="tel" id="phone" placeholder="请输入手机号" maxlength="11" inputmode="numeric">
+  </div>
+  <div class="input-row">
+    <select id="barberSelect">
+      <option value="default">默认理发师</option>
+      <option value="tony">Tony 老师</option>
+      <option value="kevin">Kevin 老师</option>
+      <option value="lisa">Lisa 老师</option>
+    </select>
+    <button id="takeBtn">取号</button>
+  </div>
+
+  <div class="stats">
+    <div>
+      <div class="label">当前排队人数</div>
+      <div class="big-num" id="waitingCount">0</div>
+    </div>
+    <div>
+      <div class="label">正在叫号</div>
+      <div class="called" id="currentCalled">—</div>
+    </div>
+  </div>
+
+  <div class="my-ticket" id="myTicket">
+    <div class="hint">🎫 您的号码 <span id="myBarber" class="barber-tag"></span></div>
+    <div class="code" id="myCode">—</div>
+    <div class="phone" id="myPhone"></div>
+    <div class="actions">
+      <button class="secondary" id="cancelBtn" style="padding:8px 18px; font-size:0.85rem;">取消排队</button>
+    </div>
+  </div>
+
+  <div class="waiting-codes" id="waitingCodes"></div>
+  <div class="toast">排队信息每 3 秒自动刷新</div>
+</div>
+
+<script>
+  const phoneInput = document.getElementById('phone');
+  const barberSelect = document.getElementById('barberSelect');
+  const takeBtn = document.getElementById('takeBtn');
+  const cancelBtn = document.getElementById('cancelBtn');
+  const waitingCountEl = document.getElementById('waitingCount');
+  const currentCalledEl = document.getElementById('currentCalled');
+  const myTicket = document.getElementById('myTicket');
+  const myCode = document.getElementById('myCode');
+  const myPhone = document.getElementById('myPhone');
+  const myBarber = document.getElementById('myBarber');
+  const waitingCodesEl = document.getElementById('waitingCodes');
+
+  let currentPhone = null; // 当前展示的取号手机号
+
+  // 取号
+  async function takeNumber() {
+    const phone = phoneInput.value.trim();
+    const barber = barberSelect.value;
+    if (!phone) return alert('请输入手机号');
+    if (!/^\d{6,11}$/.test(phone)) return alert('请输入6~11位数字手机号');
+
+    takeBtn.disabled = true;
+    try {
+      const res = await fetch('/api/take', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, barber }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      currentPhone = data.phone;
+      myCode.textContent = data.code;
+      myPhone.textContent = '📱 ' + data.phone;
+      myBarber.textContent = barberLabel(data.barber);
+      myTicket.style.display = 'block';
+      phoneInput.value = '';
+      await refreshStatus();
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      takeBtn.disabled = false;
+    }
+  }
+
+  // 取消排队
+  async function cancelQueue() {
+    if (!currentPhone) return;
+    if (!confirm('确定要取消排队吗？')) return;
+    try {
+      const res = await fetch('/api/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: currentPhone }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      myTicket.style.display = 'none';
+      currentPhone = null;
+      alert('已取消排队');
+      await refreshStatus();
+    } catch (e) {
+      alert(e.message);
+    }
+  }
+
+  function barberLabel(b) {
+    return ({ default: '默认理发师', tony: 'Tony 老师', kevin: 'Kevin 老师', lisa: 'Lisa 老师' })[b] || b;
+  }
+
+  // 刷新总览
+  async function refreshStatus() {
+    try {
+      const res = await fetch('/api/status');
+      const data = await res.json();
+      waitingCountEl.textContent = data.waitingCount;
+      // 汇总视图下没有单一 currentCalled，展示第一个 serving 的号码
+      const serving = (data.byBarber || []).find(b => b.serving > 0);
+      currentCalledEl.textContent = serving ? '服务中' : '—';
+
+      if (data.waitingCodes && data.waitingCodes.length > 0) {
+        waitingCodesEl.innerHTML = '📋 等待中: ' + data.waitingCodes.join(' · ');
+      } else {
+        waitingCodesEl.innerHTML = '';
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  takeBtn.addEventListener('click', takeNumber);
+  cancelBtn.addEventListener('click', cancelQueue);
+  phoneInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); takeNumber(); }
+  });
+
+  refreshStatus();
+  setInterval(refreshStatus, 3000);
+</script>
+</body>
+</html>

@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>💈 商家后台</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, sans-serif; }
+    body { background: #f7f7fc; min-height: 100vh; padding: 20px; display: flex; justify-content: center; }
+    .container { width: 100%; max-width: 1100px; }
+    h1 { font-size: 1.6rem; color: #1e1e2f; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
+    .top-bar { background: #fff; border-radius: 20px; padding: 16px 22px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; box-shadow: 0 6px 18px rgba(0,0,0,0.05); flex-wrap: wrap; gap: 10px; }
+    .top-bar .stat { display: flex; gap: 24px; align-items: center; }
+    .top-bar .stat .item { text-align: center; }
+    .top-bar .stat .num { font-size: 1.8rem; font-weight: 800; color: #6c5ce7; line-height: 1; }
+    .top-bar .stat .label { font-size: 0.8rem; color: #7a7a9a; margin-top: 4px; }
+    .refresh-tip { font-size: 0.8rem; color: #a0a0b8; }
+    .barbers { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; }
+    .barber-card { background: #fff; border-radius: 24px; padding: 24px; box-shadow: 0 8px 24px rgba(0,0,0,0.06); display: flex; flex-direction: column; }
+    .barber-card h2 { font-size: 1.2rem; color: #1e1e2f; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; }
+    .badge { background: #6c5ce7; color: #fff; padding: 3px 12px; border-radius: 30px; font-size: 0.8rem; font-weight: 500; }
+    .serving-box { background: #e9e5ff; border-radius: 16px; padding: 14px 16px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; }
+    .serving-box .label { color: #5e5e7a; font-size: 0.85rem; }
+    .serving-box .value { font-size: 1.6rem; font-weight: 800; color: #ff7675; }
+    .serving-box .phone-small { font-size: 0.8rem; color: #6e6e8f; }
+    .actions { display: flex; gap: 10px; margin-bottom: 16px; }
+    .actions button { flex: 1; padding: 12px; border: none; border-radius: 50px; font-weight: 600; font-size: 0.95rem; cursor: pointer; transition: 0.2s; }
+    .btn-call { background: #6c5ce7; color: #fff; }
+    .btn-call:hover:not(:disabled) { background: #5b4cd4; }
+    .btn-complete { background: #00b894; color: #fff; }
+    .btn-complete:hover:not(:disabled) { background: #00a383; }
+    .actions button:disabled { background: #e0e0ec; color: #a0a0b8; cursor: not-allowed; }
+    .queue-list { max-height: 380px; overflow-y: auto; padding-right: 4px; }
+    .queue-item { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; background: #fbfaff; border: 1px solid #eeeafb; border-radius: 14px; margin-bottom: 8px; }
+    .queue-item .left { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .code-badge { background: #6c5ce7; color: #fff; font-weight: 700; padding: 4px 10px; border-radius: 30px; font-size: 0.85rem; }
+    .phone { color: #3d3d5c; font-size: 0.85rem; background: #fff; padding: 4px 10px; border-radius: 30px; border: 1px solid #e5e0ff; }
+    .remove-btn { background: none; border: none; color: #bbb; cursor: pointer; font-size: 1.1rem; padding: 4px 8px; border-radius: 8px; transition: 0.15s; }
+    .remove-btn:hover { background: #ffe0e0; color: #e74c3c; }
+    .empty { text-align: center; color: #9a9ab0; padding: 24px 0; font-style: italic; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>💈 商家后台 <span class="refresh-tip">（每 2 秒自动刷新）</span></h1>
+
+  <div class="top-bar">
+    <div class="stat">
+      <div class="item">
+        <div class="num" id="totalWaiting">0</div>
+        <div class="label">总等待人数</div>
+      </div>
+      <div class="item">
+        <div class="num" id="totalBarbers">0</div>
+        <div class="label">理发师</div>
+      </div>
+    </div>
+    <div class="refresh-tip" id="lastUpdate">—</div>
+  </div>
+
+  <div class="barbers" id="barbersContainer">
+    <div class="empty" style="grid-column: 1/-1;">加载中…</div>
+  </div>
+</div>
+
+<script>
+  const barbersContainer = document.getElementById('barbersContainer');
+  const totalWaitingEl = document.getElementById('totalWaiting');
+  const totalBarbersEl = document.getElementById('totalBarbers');
+  const lastUpdateEl = document.getElementById('lastUpdate');
+
+  const BARBER_LABELS = {
+    default: '默认理发师', tony: 'Tony 老师', kevin: 'Kevin 老师', lisa: 'Lisa 老师',
+  };
+  const ALL_BARBERS = ['default', 'tony', 'kevin', 'lisa'];
+
+  let isLoading = false;
+
+  async function refresh() {
+    if (isLoading) return;
+    isLoading = true;
+    try {
+      const res = await fetch('/api/merchant/queue');
+      const data = await res.json();
+      render(data);
+      lastUpdateEl.textContent = '最后更新: ' + new Date().toLocaleTimeString();
+    } catch (e) {
+      console.error('刷新失败', e);
+    } finally {
+      isLoading = false;
+    }
+  }
+
+  function render(data) {
+    const { totalWaiting, byBarber } = data;
+    totalWaitingEl.textContent = totalWaiting || 0;
+    totalBarbersEl.textContent = (byBarber || []).length;
+
+    // 按 ALL_BARBERS 顺序渲染（即使某个理发师没数据也显示空卡片）
+    const map = {};
+    (byBarber || []).forEach(b => { map[b.barber] = b; });
+
+    const cards = ALL_BARBERS.map(barber => {
+      const info = map[barber] || { waiting: [], serving: null };
+      const waiting = info.waiting || [];
+      const serving = info.serving;
+      const label = BARBER_LABELS[barber] || barber;
+
+      const servingHtml = serving ? `
+        <div class="serving-box">
+          <div>
+            <div class="label">正在服务</div>
+            <div class="value">${serving.code}</div>
+            <div class="phone-small">📱 ${serving.phone}</div>
+          </div>
+          <span style="font-size:2rem;">💈</span>
+        </div>
+      ` : `
+        <div class="serving-box" style="background:#f4f2ff;">
+          <div>
+            <div class="label">当前空闲</div>
+            <div class="value" style="color:#a0a0b8;">—</div>
+          </div>
+          <span style="font-size:2rem;opacity:0.4;">💈</span>
+        </div>
+      `;
+
+      const listHtml = waiting.length === 0
+        ? '<div class="empty">暂无等待顾客</div>'
+        : waiting.map(item => `
+            <div class="queue-item">
+              <div class="left">
+                <span class="code-badge">${item.code}</span>
+                <span class="phone">📱 ${item.phone}</span>
+              </div>
+              <button class="remove-btn" title="移除" data-id="${item.id}">✕</button>
+            </div>
+          `).join('');
+
+      return `
+        <div class="barber-card">
+          <h2>${label} <span class="badge">${waiting.length} 人等待</span></h2>
+          ${servingHtml}
+          <div class="actions">
+            <button class="btn-call" data-barber="${barber}" ${waiting.length === 0 ? 'disabled' : ''}>📢 叫号</button>
+            <button class="btn-complete" data-barber="${barber}" ${!serving ? 'disabled' : ''}>✅ 完成</button>
+          </div>
+          <div class="queue-list">${listHtml}</div>
+        </div>
+      `;
+    }).join('');
+
+    barbersContainer.innerHTML = cards;
+
+    // 绑定按钮事件
+    barbersContainer.querySelectorAll('.btn-call').forEach(btn => {
+      btn.addEventListener('click', () => callNext(btn.dataset.barber));
+    });
+    barbersContainer.querySelectorAll('.btn-complete').forEach(btn => {
+      btn.addEventListener('click', () => completeCurrent(btn.dataset.barber));
+    });
+    barbersContainer.querySelectorAll('.remove-btn').forEach(btn => {
+      btn.addEventListener('click', () => removeItem(btn.dataset.id));
+    });
+  }
+
+  async function callNext(barber) {
+    try {
+      let res = await fetch('/api/merchant/call', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ barber }),
+      });
+      let data = await res.json();
+
+      // 需要强制覆盖确认
+      if (res.status === 409 && data.needForce) {
+        if (!confirm(`理发师正在服务 ${data.currentServing.code}，确定要强制叫下一位吗？（当前顾客会退回队列）`)) {
+          return;
+        }
+        res = await fetch('/api/merchant/call', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ barber, force: true }),
+        });
+        data = await res.json();
+      }
+
+      if (!res.ok) throw new Error(data.error);
+      await refresh();
+    } catch (e) {
+      alert(e.message);
+    }
+  }
+
+  async function completeCurrent(barber) {
+    try {
+      const res = await fetch('/api/merchant/complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ barber }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      await refresh();
+    } catch (e) {
+      alert(e.message);
+    }
+  }
+
+  async function removeItem(id) {
+    if (!confirm('确定要移除该排队记录吗？')) return;
+    try {
+      const res = await fetch(`/api/merchant/queue/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      await refresh();
+    } catch (e) {
+      alert(e.message);
+    }
+  }
+
+  refresh();
+  setInterval(refresh, 2000);
+</script>
+</body>
+</html>

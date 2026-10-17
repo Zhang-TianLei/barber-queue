@@ -1,0 +1,13 @@
+{
+  "name": "barber-queue",
+  "version": "2.0.0",
+  "description": "理发店排队取号小工具（防刷 + 持久化 + 多理发师）",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.10.0",
+    "express": "^4.19.2"
+  }
+}
